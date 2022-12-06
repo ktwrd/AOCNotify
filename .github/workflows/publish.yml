@@ -28,7 +28,7 @@ jobs:
       run: dotnet publish -p:PublishProfile=Windows -p:Configuration=Release
     - run: sudo apt install zip -y
     - name: Compress
-      run: cd ./bin/Release/net6.0/win-x86/publish/ && zip -r ../../../../../win-x86.zip ./* && cd ../../../../../
+      run: cd ./bin/Release/net6.0/publish/win-x86/ && zip -r ../../../../../win-x86.zip ./* && cd ../../../../../
     - name: Upload to release
       uses: softprops/action-gh-release@v1
       with:
@@ -53,7 +53,7 @@ jobs:
     - name: Publish
       run: dotnet publish -p:PublishProfile=Linux -p:Configuration=Release
     - name: Compress
-      run: cd ./bin/Release/net6.0/linux-x64/publish/ && zip -r ../../../../../linux-x64.zip ./* && cd ../../../../../
+      run: cd ./bin/Release/net6.0/publish/linux-x64/ && zip -r ../../../../../linux-x64.zip ./* && cd ../../../../../
     - name: Upload to release
       uses: softprops/action-gh-release@v1
       with:
