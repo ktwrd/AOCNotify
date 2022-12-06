@@ -21,11 +21,11 @@ jobs:
       with:
         dotnet-version: 6.0.x
     - name: Restore dependencies
-      run: dotnet restore AOCNotify
+      run: dotnet restore
     - name: Build
-      run: dotnet build AOCNotify --no-restore
+      run: dotnet build --no-restore
     - name: Publish
-      run: dotnet publish AOCNotify -p:PublishProfile=Windows -p:Configuration=Release
+      run: dotnet publish -p:PublishProfile=Windows -p:Configuration=Release
     - run: sudo apt install zip -y
     - name: Compress
       run: cd ./bin/Release/net6.0/win-x86/publish/ && zip -r ../../../../../win-x86.zip ./* && cd ../../../../../
@@ -47,11 +47,11 @@ jobs:
       with:
         dotnet-version: 6.0.x
     - name: Restore dependencies
-      run: dotnet restore AOCNotify
+      run: dotnet restore
     - name: Build
-      run: dotnet build AOCNotify --no-restore
+      run: dotnet build --no-restore
     - name: Publish
-      run: dotnet publish AOCNotify -p:PublishProfile=Linux -p:Configuration=Release
+      run: dotnet publish -p:PublishProfile=Linux -p:Configuration=Release
     - name: Compress
       run: cd ./bin/Release/net6.0/linux-x64/publish/ && zip -r ../../../../../linux-x64.zip ./* && cd ../../../../../
     - name: Upload to release
