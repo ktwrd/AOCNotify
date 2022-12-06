@@ -1,0 +1,63 @@
+# This workflow will build a .NET project
+# For more information see: https://docs.github.com/en/actions/automating-builds-and-tests/building-and-testing-net
+
+name: Publish
+
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Github Release Tag'
+        required: true
+
+jobs:
+  windows:
+    runs-on: ubuntu-latest
+
+    steps:
+    - uses: actions/checkout@v3
+    - name: Setup .NET
+      uses: actions/setup-dotnet@v3
+      with:
+        dotnet-version: 6.0.x
+    - name: Restore dependencies
+      run: dotnet restore AOCNotify
+    - name: Build
+      run: dotnet build AOCNotify --no-restore
+    - name: Publish
+      run: dotnet publish AOCNotify -p:PublishProfile=Windows -p:Configuration=Release
+    - run: sudo apt install zip -y
+    - name: Compress
+      run: cd ./bin/Release/net6.0/win-x86/publish/ && zip -r ../../../../../win-x86.zip ./* && cd ../../../../../
+    - name: Upload to release
+      uses: softprops/action-gh-release@v1
+      with:
+        files: win-x86.zip
+        tag_name: ${{ github.event.inputs.tag }}
+        draft: false
+        prerelease: true
+      
+  linux:
+    runs-on: ubuntu-latest
+
+    steps:
+    - uses: actions/checkout@v3
+    - name: Setup .NET
+      uses: actions/setup-dotnet@v3
+      with:
+        dotnet-version: 6.0.x
+    - name: Restore dependencies
+      run: dotnet restore AOCNotify
+    - name: Build
+      run: dotnet build AOCNotify --no-restore
+    - name: Publish
+      run: dotnet publish AOCNotify -p:PublishProfile=Linux -p:Configuration=Release
+    - name: Compress
+      run: cd ./bin/Release/net6.0/linux-x64/publish/ && zip -r ../../../../../linux-x64.zip ./* && cd ../../../../../
+    - name: Upload to release
+      uses: softprops/action-gh-release@v1
+      with:
+        files: linux-x64.zip
+        tag_name: ${{ github.event.inputs.tag }}
+        draft: false
+        prerelease: true
