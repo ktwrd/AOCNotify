@@ -63,7 +63,6 @@ namespace AOCNotify
         {
             {"Discord", new Dictionary<string, object>()
                 {
-                    {"Enable", false },
                     {"Webhooks", "" }
                 }
             },
