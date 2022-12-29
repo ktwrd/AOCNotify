@@ -38,7 +38,9 @@ namespace AOCNotify
         {
             var start = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
             int year = Config.GetInt("AOC", "Year", DateTime.Now.Year);
-            var res = await HttpClient.GetAsync($"https://adventofcode.com/{year}/leaderboard/private/view/{id}.json");
+            var url = $"https://adventofcode.com/{year}/leaderboard/private/view/{id}.json";
+            var res = await HttpClient.GetAsync(url);
+            Console.WriteLine($"GET: {url}");
             var stringcontent = res.Content.ReadAsStringAsync().Result;
             if (res.StatusCode == System.Net.HttpStatusCode.OK)
             {
@@ -48,7 +50,7 @@ namespace AOCNotify
                     Console.WriteLine($"[ProcessLeaderboard:{id}] Failed to deserialize\n================\n{stringcontent}\n================");
                     return;
                 }
-                string filename = Path.Combine(Directory.GetCurrentDirectory(), $"cached-{id}-{MD5Hash(webhook)}.json");
+                string filename = Path.Combine(Directory.GetCurrentDirectory(), $"cached-{id}-{MD5Hash(webhook.Trim())}.json");
                 LeaderboardResponse? previous = null;
                 if (File.Exists(filename))
                     previous = JsonSerializer.Deserialize<LeaderboardResponse>(File.ReadAllText(filename), serializerOptions);
