@@ -123,7 +123,7 @@ namespace AOCNotify
                         var diff = endTimestamp - new DateTime(Config.GetInt("AOC", "Year", DateTimeOffset.Now.Year), 12, dayPair.Key, 5, 0, 0, DateTimeKind.Utc);
                         string content = string.Join(" ", new string[]
                         {
-                            $"{mpair.Value.Name} solved",
+                            $"`{mpair.Value.Name}` solved",
                             $"day {dayPair.Key}",
                             $"part {completionPair.Key}",
                             $"({Math.Floor(diff.TotalHours)}:{(Math.Floor(diff.TotalMinutes) % 60).ToString().PadLeft(2, '0')}:{(Math.Floor(diff.TotalSeconds) % 60 % 60).ToString().PadLeft(2, '0')})"
