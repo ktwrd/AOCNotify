@@ -12,7 +12,7 @@ namespace AOCNotify
 {
     public class OldProgram
     {
-        public static void Main(string[] args)
+        public static void xxx(string[] args)
         {
             Config.Get();
             Config.Save();
