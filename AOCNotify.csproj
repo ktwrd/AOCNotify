@@ -8,7 +8,7 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <PackageReference Include="kate.shared" Version="1.0.3" />
+    <PackageReference Include="kate.shared" Version="1.2.0" />
     <PackageReference Include="Trove.Nini" Version="1.1.0" />
   </ItemGroup>
 
