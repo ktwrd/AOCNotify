@@ -10,7 +10,7 @@ using System.Threading.Tasks;
 
 namespace AOCNotify
 {
-    public class Program
+    public class OldProgram
     {
         public static void Main(string[] args)
         {
