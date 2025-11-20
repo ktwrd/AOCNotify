@@ -31,6 +31,7 @@ public static class Program
 {
     public static void Main(string[] args)
     {
+        PrintVersion();
         var nlogConfigLocation = Path.GetFullPath("./nlog.config");
         Console.WriteLine("NLog Config Location: " + nlogConfigLocation);
         LogManager.Setup().LoadConfigurationFromFile(nlogConfigLocation);
@@ -42,6 +43,13 @@ public static class Program
         JobManager.Initialize();
 
         RunJobsBlocking();
+    }
+    private static void PrintVersion()
+    {
+        var content = "-------- AOC Notify Release: " + typeof(Program).Assembly.GetName().Version;
+        Console.WriteLine("".PadRight(content.Length, '-'));
+        Console.WriteLine(content);
+        Console.WriteLine();
     }
     private static void RunJobsBlocking()
     {
