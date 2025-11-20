@@ -1,161 +1,131 @@
-﻿using kate.shared.Helpers;
+﻿/*
+ *   Copyright 2022-2025 Kate Ward <kate@dariox.club>
+ *
+ *   Licensed under the Apache License, Version 2.0 (the "License");
+ *   you may not use this file except in compliance with the License.
+ *   You may obtain a copy of the License at
+ *
+ *       http://www.apache.org/licenses/LICENSE-2.0
+ *
+ *   Unless required by applicable law or agreed to in writing, software
+ *   distributed under the License is distributed on an "AS IS" BASIS,
+ *   WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ *   See the License for the specific language governing permissions and
+ *   limitations under the License.
+ */
+
+using AOCNotify.Handlers;
+using FluentScheduler;
+using kate.shared.Helpers;
+using Microsoft.Extensions.DependencyInjection;
+using NLog;
 using System;
-using System.Collections.Generic;
 using System.IO;
-using System.Linq;
 using System.Net.Http;
-using System.Net.Http.Json;
 using System.Text.Json;
 using System.Threading.Tasks;
 
-namespace AOCNotify
+namespace AOCNotify;
+
+public static class Program
 {
-    public class Program
+    public static void Main(string[] args)
     {
-        public static void Main(string[] args)
+        var nlogConfigLocation = Path.GetFullPath("./nlog.config");
+        Console.WriteLine("NLog Config Location: " + nlogConfigLocation);
+        LogManager.Setup().LoadConfigurationFromFile(nlogConfigLocation);
+
+        JobManager.JobException += JobManagerOnException;
+        JobManager.JobStart += JobManagerOnStart;
+        JobManager.JobEnd += JobManagerOnEnd;
+
+        JobManager.Initialize();
+
+        RunJobsBlocking();
+    }
+    private static void RunJobsBlocking()
+    {
+        var serviceCollection = new ServiceCollection();
+        ConfigureServices(serviceCollection);
+        var services = serviceCollection.BuildServiceProvider();
+        JobManager.AddJob(UpdateLeaderboardHandlerJob, s =>
         {
-            Config.Get();
-            Config.Save();
-            HttpClient = new HttpClient();
-            HttpClient.DefaultRequestHeaders.Add("cookie", "session=" + Config.GetString("AOC", "Token", ""));
-            var taskList = new List<Task>();
-            foreach (var id in Config.LeaderboardIdArray)
-            {
-                foreach (var wb in Config.DiscordWebhookArray)
-                {
-                    taskList.Add(new Task(delegate
-                    {
-                        ProcessLeaderboard(id, wb).Wait();
-                    }));
-                }
-            }
-            foreach (var i in taskList)
-                i.Start();
-            Task.WhenAll(taskList).Wait();
+            s
+            .WithName(nameof(UpdateLeaderboardHandlerJob))
+            .ToRunNow().AndEvery(5).Minutes();
+        });
+        JobManager.AddJob(ReloadConfig, s =>
+        {
+            s
+            .WithName(nameof(ReloadConfig))
+            .ToRunEvery(1).Minutes()
+            .DelayFor(1).Minutes();
+        });
+
+        JobManager.Start();
+
+        Task.Delay(-1).Wait();
+        async void UpdateLeaderboardHandlerJob()
+        {
+            var handler = services.GetRequiredService<UpdateLeaderboardHandler>();
+            await handler.Run();
         }
-        public static HttpClient HttpClient = new HttpClient();
-        public static async Task ProcessLeaderboard(string id, string webhook)
+        void ReloadConfig()
         {
-            var start = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
-            int year = Config.GetInt("AOC", "Year", DateTime.Now.Year);
-            var url = $"https://adventofcode.com/{year}/leaderboard/private/view/{id}.json";
-            var res = await HttpClient.GetAsync(url);
-            Console.WriteLine($"GET: {url}");
-            var stringcontent = res.Content.ReadAsStringAsync().Result;
-            if (res.StatusCode == System.Net.HttpStatusCode.OK)
+            var location = GetConfigLocation();
+            var log = LogManager.GetLogger(typeof(Program).Namespace + "." + nameof(ReloadConfig));
+            log.Trace($"Reloading config: {location}");
+            try
             {
-                LeaderboardResponse deser = JsonSerializer.Deserialize<LeaderboardResponse>(stringcontent, serializerOptions);
-                if (deser == null)
-                {
-                    Console.WriteLine($"[ProcessLeaderboard:{id}] Failed to deserialize\n================\n{stringcontent}\n================");
-                    return;
-                }
-                string filename = Path.Combine(Directory.GetCurrentDirectory(), $"cached-{id}-{MD5Hash(webhook.Trim())}.json");
-                LeaderboardResponse? previous = null;
-                if (File.Exists(filename))
-                    previous = JsonSerializer.Deserialize<LeaderboardResponse>(File.ReadAllText(filename), serializerOptions);
-                string[] previousPrintStrings = previous == null ? Array.Empty<string>() : GetUserStrings(previous);
-                string[] currentPrintStrings = GetUserStrings(deser);
-
-                string[] targetPrintStrings = currentPrintStrings.Concat(previousPrintStrings).ToArray();
-                targetPrintStrings = targetPrintStrings.Where(v => targetPrintStrings.Where(t => t == v).Count() < 2).ToArray();
-                File.WriteAllText(filename, JsonSerializer.Serialize(deser, serializerOptions));
-
-                SendMessage(targetPrintStrings, webhook);
-                Console.WriteLine($"[ProcessLeaderboard:{id}] {DateTimeOffset.UtcNow.ToUnixTimeMilliseconds() - start}ms");
+                services.GetRequiredService<AppConfig>().ReadFromFile(GetConfigLocation());
+                log.Trace("Finished reloading config file");
             }
-            else
+            catch (Exception ex)
             {
-                Console.WriteLine($"[ProcessLeaderboard:{id}] Failed with code {(int)res.StatusCode}\n================\n{stringcontent}\n================");
+                log.Error(ex, "Failed to reload config");
             }
         }
-        public static void SendMessage(string[] lines, string url)
-        {
-            var submessage = new List<string>();
-            string working = "";
-            foreach (var thing in lines)
+    }
+    private static readonly Logger JogManagerLog = LogManager.GetLogger(nameof(JobManager));
+    private static void JobManagerOnException(JobExceptionInfo info)
+    {
+        JogManagerLog.Error(info.Exception, nameof(JobManager.JobException) + " in " + info.Name);
+    }
+    private static void JobManagerOnStart(JobStartInfo info)
+    {
+        JogManagerLog.Trace(nameof(JobManager.JobStart) + " " + info.Name);
+    }
+    private static void JobManagerOnEnd(JobEndInfo info)
+    {
+        JogManagerLog.Debug($"{nameof(JobManager.JobEnd)} {info.Name} (duration: {FormatHelper.Duration(info.Duration)}, next run: {info.NextRun?.ToLocalTime()})");
+    }
+    private static void ConfigureServices(IServiceCollection services)
+    {
+        services.AddSingleton(GetConfig())
+            .AddSingleton(new HttpClient())
+            .AddSingleton(new JsonSerializerOptions()
             {
-                if (working.Length + thing.Length > 2000)
-                {
-                    submessage.Add(working);
-                    working = "";
-                }
-                working += $"{thing}\n";
-            }
-            if (working.Length > 0)
-                submessage.Add(working);
-            var submessageArr = submessage.ToArray();
-            for (int i = 0; i < submessageArr.Length; i++)
-            {
-                string cnt = submessageArr[i];
-                var dict = new Dictionary<string, object>()
-                {
-                    {"content", cnt },
-                    {"avatar_url", "https://cdn.discordapp.com/avatars/1048078704485609523/2095d8f4face4397289f29954d61d777.png" },
-                    {"username", "Advent of Code" }
-                };
-                HttpClient.PostAsJsonAsync(url, dict, serializerOptions).Wait();
-                SleepFor(500).Wait();
-            }
-        }
-        public static Task SleepFor(int duration)
-        {
-            System.Threading.Thread.Sleep(duration);
-            return Task.CompletedTask;
-        }
-        public static JsonSerializerOptions serializerOptions = new JsonSerializerOptions
-        {
-            IgnoreReadOnlyFields = true,
-            IgnoreReadOnlyProperties = true,
-            IncludeFields = true,
-            WriteIndented = true
-        };
-        public static string[] GetUserStrings(LeaderboardResponse leaderboard)
-        {
-            var list = new List<KeyValuePair<long, string>>();
-            foreach (var mpair in leaderboard.Members)
-            {
-                foreach (var dayPair in mpair.Value.CompletionLevel)
-                {
-                    foreach (var completionPair in dayPair.Value)
-                    {
-                        var endTimestamp = DateTimeOffset.FromUnixTimeSeconds(completionPair.Value.Timestamp);
-                        var diff = endTimestamp - new DateTime(Config.GetInt("AOC", "Year", DateTimeOffset.Now.Year), 12, dayPair.Key, 5, 0, 0, DateTimeKind.Utc);
-                        string content = string.Join(" ", new string[]
-                        {
-                            $"`{mpair.Value.Name}` solved",
-                            $"day {dayPair.Key}",
-                            $"part {completionPair.Key}",
-                            $"({Math.Floor(diff.TotalHours)}:{(Math.Floor(diff.TotalMinutes) % 60).ToString().PadLeft(2, '0')}:{(Math.Floor(diff.TotalSeconds) % 60 % 60).ToString().PadLeft(2, '0')})"
-                        });
+                WriteIndented = true
+            });
 
-                        list.Add(new KeyValuePair<long, string>(completionPair.Value.Timestamp, content));
-                    }
-                }
-            }
-            return list.OrderBy(v => v.Key).Select(v => v.Value).ToArray();
-        }
-
-        public static string MD5Hash(string content)
+        services
+            .AddSingleton<AdventClient>()
+            .AddSingleton<UpdateLeaderboardHandler>();
+    }
+    private static AppConfig GetConfig()
+    {
+        var config = new AppConfig();
+        var location = Path.GetFullPath("./config.xml");
+        if (!File.Exists(location))
         {
-            using (System.Security.Cryptography.MD5 md5 = System.Security.Cryptography.MD5.Create())
-            {
-                byte[] inputBytes = System.Text.Encoding.ASCII.GetBytes(content);
-                byte[] hashBytes = md5.ComputeHash(inputBytes);
-#if NET5_0_OR_GREATER
-                return Convert.ToHexString(hashBytes);
-
-#else
-                // Convert the byte array to hexadecimal string prior to .NET 5
-                // StringBuilder sb = new System.Text.StringBuilder();
-                for (int i = 0; i < hashBytes.Length; i++)
-                {
-                    sb.Append(hashBytes[i].ToString("X2"));
-                }
-                return sb.ToString();
-#endif
-
-            }
+            config.WriteToFile(location);
+            throw new InvalidOperationException($"Could not find config file, so an empty one was written to: \"{location}\"");
         }
+        config.ReadFromFile(location);
+        return config;
+    }
+    private static string GetConfigLocation()
+    {
+        return Path.GetFullPath("./config.xml");
     }
 }
