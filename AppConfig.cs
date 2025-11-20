@@ -28,6 +28,11 @@ namespace AOCNotify;
 [XmlRoot("AppConfig")]
 public class AppConfig
 {
+    public AppConfig()
+    {
+        NotifyTargets = new();
+        Leaderboards = [];
+    }
     private readonly Lock _filesystemLock = new();
     public void WriteToFile(string location)
     {
@@ -81,14 +86,29 @@ public class AppConfig
         serializer.Serialize(writer, this);
     }
 
+    [XmlElement("Leaderboard")]
+    public List<LeaderboardItem> Leaderboards { get; set; }
+
+    [XmlElement("NotifyTargets")]
+    public NotifyTargetElement NotifyTargets { get; set; }
+
     public class NotifyTargetElement
     {
+        public NotifyTargetElement()
+        {
+            Discord = [];
+        }
         [XmlElement("Discord")]
-        public List<DiscordNotifyTarget> Discord { get; set; } = [];
+        public List<DiscordNotifyTarget> Discord { get; set; }
     }
 
     public class DiscordNotifyTarget : BaseNotifyTarget
     {
+        public DiscordNotifyTarget() : base()
+        {
+            WebhookUrl = "";
+        }
+
         [Required]
         [XmlElement("WebhookUrl")]
         public string WebhookUrl { get; set; } = "";
@@ -101,34 +121,40 @@ public class AppConfig
 
     public class BaseNotifyTarget
     {
+        public BaseNotifyTarget()
+        {
+            Id = "";
+        }
+
         [Required]
         [XmlAttribute("Id")]
-        public string Id { get; set; } = "";
+        public string Id { get; set; }
     }
 
     public class LeaderboardItem
     {
+        public LeaderboardItem()
+        {
+            Token = "";
+            Year = DateTimeOffset.UtcNow.Year;
+            LeaderboardId = "";
+            NotifyTargetIds = [];
+        }
         [Required]
         [XmlElement("Token")]
-        public string Token { get; set; } = "";
+        public string Token { get; set; }
 
         [XmlAttribute("Year")]
-        public int Year { get; set; } = DateTimeOffset.UtcNow.Year;
+        public int Year { get; set; }
 
         [XmlAttribute("DisplayName")]
         public string? DisplayName { get; set; }
 
         [Required]
         [XmlAttribute("Id")]
-        public string LeaderboardId { get; set; } = "";
+        public string LeaderboardId { get; set; }
 
         [XmlElement("NotifyTargetId")]
-        public List<string> NotifyTargetIds { get; set; } = [];
+        public List<string> NotifyTargetIds { get; set; }
     }
-
-    [XmlElement("Leaderboard")]
-    public List<LeaderboardItem> Leaderboards { get; set; } = [];
-
-    [XmlElement("NotifyTargets")]
-    public NotifyTargetElement NotifyTargets { get; set; } = new();
 }
