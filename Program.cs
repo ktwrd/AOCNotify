@@ -16,7 +16,6 @@
 
 using AOCNotify.Handlers;
 using FluentScheduler;
-using kate.shared.Helpers;
 using Microsoft.Extensions.DependencyInjection;
 using NLog;
 using System;
@@ -36,13 +35,18 @@ public static class Program
         Console.WriteLine("NLog Config Location: " + nlogConfigLocation);
         LogManager.Setup().LoadConfigurationFromFile(nlogConfigLocation);
 
-        JobManager.JobException += JobManagerOnException;
-        JobManager.JobStart += JobManagerOnStart;
-        JobManager.JobEnd += JobManagerOnEnd;
-
+        var jobManagerLogger = new JobManagerLogger();
+        jobManagerLogger.Start();
         JobManager.Initialize();
 
-        RunJobsBlocking();
+        try
+        {
+            RunJobsBlocking();
+        }
+        finally
+        {
+            jobManagerLogger.End();
+        }
     }
     private static void PrintVersion()
     {
@@ -56,56 +60,20 @@ public static class Program
         var serviceCollection = new ServiceCollection();
         ConfigureServices(serviceCollection);
         var services = serviceCollection.BuildServiceProvider();
-        JobManager.AddJob(UpdateLeaderboardHandlerJob, s =>
-        {
-            s
-            .WithName(nameof(UpdateLeaderboardHandlerJob))
-            .ToRunNow().AndEvery(5).Minutes();
-        });
-        JobManager.AddJob(ReloadConfig, s =>
-        {
-            s
-            .WithName(nameof(ReloadConfig))
+
+        var registry = services.GetRequiredService<Registry>();
+
+        registry.Schedule(services.GetRequiredService<ReloadConfigJob>())
             .ToRunEvery(1).Minutes()
             .DelayFor(1).Minutes();
-        });
+
+        registry.Schedule(services.GetRequiredService<UpdateLeaderboardJob>())
+            .ToRunNow()
+            .AndEvery(5).Minutes();
 
         JobManager.Start();
 
         Task.Delay(-1).Wait();
-        async void UpdateLeaderboardHandlerJob()
-        {
-            var handler = services.GetRequiredService<UpdateLeaderboardHandler>();
-            await handler.Run();
-        }
-        void ReloadConfig()
-        {
-            var location = GetConfigLocation();
-            var log = LogManager.GetLogger(typeof(Program).Namespace + "." + nameof(ReloadConfig));
-            log.Trace($"Reloading config: {location}");
-            try
-            {
-                services.GetRequiredService<AppConfig>().ReadFromFile(GetConfigLocation());
-                log.Trace("Finished reloading config file");
-            }
-            catch (Exception ex)
-            {
-                log.Error(ex, "Failed to reload config");
-            }
-        }
-    }
-    private static readonly Logger JogManagerLog = LogManager.GetLogger(nameof(JobManager));
-    private static void JobManagerOnException(JobExceptionInfo info)
-    {
-        JogManagerLog.Error(info.Exception, nameof(JobManager.JobException) + " in " + info.Name);
-    }
-    private static void JobManagerOnStart(JobStartInfo info)
-    {
-        JogManagerLog.Trace(nameof(JobManager.JobStart) + " " + info.Name);
-    }
-    private static void JobManagerOnEnd(JobEndInfo info)
-    {
-        JogManagerLog.Debug($"{nameof(JobManager.JobEnd)} {info.Name} (duration: {FormatHelper.Duration(info.Duration)}, next run: {info.NextRun?.ToLocalTime()})");
     }
     private static void ConfigureServices(IServiceCollection services)
     {
@@ -114,11 +82,13 @@ public static class Program
             .AddSingleton(new JsonSerializerOptions()
             {
                 WriteIndented = true
-            });
+            })
+            .AddSingleton(new Registry());
 
         services
             .AddSingleton<AdventClient>()
-            .AddSingleton<UpdateLeaderboardHandler>();
+            .AddSingleton<UpdateLeaderboardHandler>()
+            .AddSingleton<SendNotificationHandler>();
     }
     private static AppConfig GetConfig()
     {
@@ -132,7 +102,7 @@ public static class Program
         config.ReadFromFile(location);
         return config;
     }
-    private static string GetConfigLocation()
+    public static string GetConfigLocation()
     {
         return Path.GetFullPath("./config.xml");
     }

@@ -14,7 +14,6 @@
  *   limitations under the License.
  */
 
-using Discord.Webhook;
 using kate.shared.Helpers;
 using NLog;
 using System;
@@ -30,7 +29,8 @@ namespace AOCNotify.Handlers;
 public class UpdateLeaderboardHandler(
     AppConfig appConfig,
     AdventClient adventClient,
-    JsonSerializerOptions serializerOptions)
+    JsonSerializerOptions serializerOptions,
+    SendNotificationHandler notificationHandler)
 {
     private readonly Logger _log = LogManager.GetCurrentClassLogger();
 
@@ -72,7 +72,7 @@ public class UpdateLeaderboardHandler(
             return;
         }
 
-        await SendMessage(leaderboardItem, notifyTarget, content);
+        await notificationHandler.SendAsync(leaderboardItem, notifyTarget, content);
         await WriteLeaderboard(current, leaderboardItem, notifyTarget);
         _log.Info($"{leaderboardIdent} Finished!");
     }
@@ -86,52 +86,6 @@ public class UpdateLeaderboardHandler(
         file.SetLength(0);
         await JsonSerializer.SerializeAsync(file, leaderboard, serializerOptions);
         _log.Info($"Wrote {NeoSmart.PrettySize.PrettySize.Bytes(file.Length)} to: {location}");
-    }
-    private async Task SendMessage(
-        LeaderboardItem leaderboardItem, 
-        BaseNotifyTarget notifyTarget, IEnumerable<string> content)
-    {
-        if (notifyTarget is DiscordNotifyTarget discord)
-        {
-            await SendDiscordMessagee(leaderboardItem, discord, content);
-        }
-        else
-        {
-            throw new NotImplementedException($"Where NotifyTarget {notifyTarget.Id} Type is {notifyTarget.GetType()}");
-        }
-    }
-    private async Task SendDiscordMessagee(
-        LeaderboardItem leaderboardItem,
-        DiscordNotifyTarget notifyTarget, IEnumerable<string> content)
-    {
-        var leaderboardIdent = $"[leaderboard={leaderboardItem.LeaderboardId}, notifyTarget={notifyTarget.Id}]";
-        using var client = new DiscordWebhookClient(notifyTarget.WebhookUrl);
-        var chunked = content.ChunkByLength().ToList();
-        var index = 1;
-        foreach (var submessageContent in chunked)
-        {
-            _log.Info($"{leaderboardIdent} Sending message {index}/{chunked.Count}");
-            await InternalDiscordSendMessage(client, notifyTarget, string.Join("\n", submessageContent));
-            await Task.Delay(1500);
-            index++;
-        }
-    }
-    private static async Task InternalDiscordSendMessage(
-        DiscordWebhookClient client,
-        DiscordNotifyTarget notifyTarget,
-        string content)
-    {
-        try
-        {
-            await client.SendMessageAsync(
-                text: content,
-                username: notifyTarget.Username,
-                avatarUrl: notifyTarget.AvatarUrl);
-        }
-        catch (Exception ex)
-        {
-            throw new InvalidOperationException($"[notifyTargetId={notifyTarget.Id}] Failed to send message into webhook {notifyTarget.WebhookUrl}\nContent: {content}", ex);
-        }
     }
     private async Task<LeaderboardResponse?> ReadPreviousLeaderboard(LeaderboardItem leaderboardItem, BaseNotifyTarget notifyTarget)
     {
